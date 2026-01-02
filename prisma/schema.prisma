@@ -1,0 +1,42 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Course {
+  id            Int     @id @default(autoincrement())
+  title         String
+  description   String?
+  image         String?
+  syllabusData  Bytes?  @map("syllabus_data")
+  syllabusType  String? @map("syllabus_type")
+  syllabusName  String? @map("syllabus_name")
+  registrations Int     @default(0)
+
+  @@map("courses")
+}
+
+model Lead {
+  id          Int      @id @default(autoincrement())
+  name        String
+  email       String
+  phone       String
+  courseTitle String?  @map("course_title")
+  courseId    Int?     @map("course_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("leads")
+}
+
+model Config {
+  key      String  @id
+  value    String?
+  data     Bytes?
+  mimeType String? @map("mime_type")
+
+  @@map("config")
+}
