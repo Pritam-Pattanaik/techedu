@@ -21,23 +21,8 @@ app.use(express.json());
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// Initialize Database
-const initDB = async () => {
-    try {
-        const existingConfig = await prisma.config.findUnique({ where: { key: 'admin_password' } });
-        if (!existingConfig) {
-            await prisma.config.create({
-                data: { key: 'admin_password', value: 'admin123' }
-            });
-            console.log('Admin password initialized');
-        }
-        console.log('Database connected via Prisma');
-    } catch (err) {
-        console.error('Error initializing database:', err);
-    }
-};
-
-initDB();
+// Database initialization logic removed for serverless stability.
+// Admin password should be seeded manually or checked on login.
 
 // API Routes
 app.get('/api/health', (req, res) => {
