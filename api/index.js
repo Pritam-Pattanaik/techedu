@@ -1,20 +1,51 @@
 import express from 'express';
 import cors from 'cors';
-import prisma from './db.js'; // IMPORTED
-import dotenv from 'dotenv';
+import { PrismaClient } from '@prisma/client';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import multer from 'multer';
 import fs from 'fs';
 
-dotenv.config();
-
-// Note: DATABASE_URL patching is now handled in ./db.js
+// Remove dotenv (Vercel injects env vars; local dev should rely on .env file loading via script)
 
 const app = express();
 const port = 3000;
 
-// Global error handler for uncaught errors
+// -- LAZY DB INITIALIZATION --
+let prismaInstance = null;
+
+function getDb() {
+    if (prismaInstance) return prismaInstance;
+
+    console.log('[LazyDB] Initializing Prisma Client...');
+
+    // Validate DATABASE_URL
+    let dbUrl = process.env.DATABASE_URL || 'postgresql://placeholder';
+
+    // Sanitize
+    dbUrl = dbUrl.trim().replace(/^["']|["']$/g, '');
+    if (dbUrl.startsWith('postgres://')) {
+        dbUrl = dbUrl.replace('postgres://', 'postgresql://');
+    }
+
+    // Attempt to connect
+    try {
+        console.log(`[LazyDB] Connecting with URL length: ${dbUrl.length}`);
+        prismaInstance = new PrismaClient({
+            datasources: {
+                db: {
+                    url: dbUrl,
+                },
+            },
+        });
+        return prismaInstance;
+    } catch (e) {
+        console.error('[LazyDB] Initialization Failed:', e);
+        throw e;
+    }
+}
+
+// Global error handlers
 process.on('uncaughtException', (error) => {
     console.error('Uncaught Exception:', error);
 });
@@ -27,16 +58,13 @@ process.on('unhandledRejection', (error) => {
 app.use(cors());
 app.use(express.json());
 
-// File Upload Config (Memory Storage for DB)
+// File Upload
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// Database initialization logic removed for serverless stability.
-// Admin password should be seeded manually or checked on login.
-
 // API Routes
 
-// Health check endpoint
+// Health check (NO DB DEPENDENCY)
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'ok',
@@ -45,10 +73,11 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// RESTORED: Database connection test endpoint
+// Database connection test endpoint
 app.get('/api/db-test', async (req, res) => {
     try {
-        const tables = await prisma.$queryRaw`
+        const db = getDb(); // Lazy Init
+        const tables = await db.$queryRaw`
             SELECT table_name 
             FROM information_schema.tables 
             WHERE table_schema = 'public'
@@ -63,7 +92,8 @@ app.get('/api/db-test', async (req, res) => {
 // Get all courses (Exclude syllabusData for performance)
 app.get('/api/courses', async (req, res) => {
     try {
-        const courses = await prisma.course.findMany({
+        const db = getDb();
+        const courses = await db.course.findMany({
             orderBy: { id: 'asc' },
             select: {
                 id: true,
@@ -92,7 +122,8 @@ app.get('/api/courses', async (req, res) => {
 app.get('/api/courses/:id/syllabus', async (req, res) => {
     const { id } = req.params;
     try {
-        const course = await prisma.course.findUnique({
+        const db = getDb();
+        const course = await db.course.findUnique({
             where: { id: parseInt(id) },
             select: { syllabusData: true, syllabusType: true, syllabusName: true }
         });
@@ -126,7 +157,8 @@ app.post('/api/courses', upload.single('syllabus'), async (req, res) => {
             courseData.syllabusName = req.file.originalname;
         }
 
-        const newCourse = await prisma.course.create({ data: courseData });
+        const db = getDb();
+        const newCourse = await db.course.create({ data: courseData });
 
         // Don't send back binary data
         const { syllabusData, ...safeCourse } = newCourse;
@@ -151,7 +183,8 @@ app.put('/api/courses/:id', upload.single('syllabus'), async (req, res) => {
             updateData.syllabusName = req.file.originalname;
         }
 
-        const updatedCourse = await prisma.course.update({
+        const db = getDb();
+        const updatedCourse = await db.course.update({
             where: { id: parseInt(id) },
             data: updateData
         });
@@ -167,7 +200,8 @@ app.put('/api/courses/:id', upload.single('syllabus'), async (req, res) => {
 app.delete('/api/courses/:id', async (req, res) => {
     const { id } = req.params;
     try {
-        await prisma.course.delete({ where: { id: parseInt(id) } });
+        const db = getDb();
+        await db.course.delete({ where: { id: parseInt(id) } });
         res.json({ message: 'Course deleted' });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -177,7 +211,8 @@ app.delete('/api/courses/:id', async (req, res) => {
 // Get all leads
 app.get('/api/leads', async (req, res) => {
     try {
-        const leads = await prisma.lead.findMany({ orderBy: { createdAt: 'desc' } });
+        const db = getDb();
+        const leads = await db.lead.findMany({ orderBy: { createdAt: 'desc' } });
         res.json(leads);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -188,7 +223,8 @@ app.get('/api/leads', async (req, res) => {
 app.post('/api/leads', async (req, res) => {
     const { name, email, phone, courseTitle, courseId } = req.body;
     try {
-        const newLead = await prisma.lead.create({
+        const db = getDb();
+        const newLead = await db.lead.create({
             data: {
                 name,
                 email,
@@ -207,11 +243,12 @@ app.post('/api/leads', async (req, res) => {
 app.post('/api/login', async (req, res) => {
     const { password } = req.body;
     try {
-        let config = await prisma.config.findUnique({ where: { key: 'admin_password' } });
+        const db = getDb();
+        let config = await db.config.findUnique({ where: { key: 'admin_password' } });
 
         // Lazy initialization for first-time login
         if (!config) {
-            config = await prisma.config.create({
+            config = await db.config.create({
                 data: { key: 'admin_password', value: 'admin123' }
             });
         }
@@ -231,7 +268,8 @@ app.post('/api/login', async (req, res) => {
 app.post('/api/config/password', async (req, res) => {
     const { password } = req.body;
     try {
-        await prisma.config.upsert({
+        const db = getDb();
+        await db.config.upsert({
             where: { key: 'admin_password' },
             update: { value: password },
             create: { key: 'admin_password', value: password }
@@ -248,7 +286,8 @@ app.post('/api/config/assets', upload.single('file'), async (req, res) => {
     if (!req.file || !key) return res.status(400).json({ error: 'Missing file or key' });
 
     try {
-        await prisma.config.upsert({
+        const db = getDb();
+        await db.config.upsert({
             where: { key },
             update: {
                 data: req.file.buffer,
@@ -270,7 +309,8 @@ app.post('/api/config/assets', upload.single('file'), async (req, res) => {
 app.get('/api/assets/:key', async (req, res) => {
     const { key } = req.params;
     try {
-        const asset = await prisma.config.findUnique({ where: { key } });
+        const db = getDb();
+        const asset = await db.config.findUnique({ where: { key } });
         if (!asset || !asset.data) return res.status(404).send('Asset not found');
 
         res.setHeader('Content-Type', asset.mimeType || 'application/octet-stream');
