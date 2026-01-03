@@ -1,5 +1,6 @@
 import { execSync } from 'child_process';
 import process from 'process';
+import 'dotenv/config'; // Load .env for local development
 
 const args = process.argv.slice(2).join(' ');
 
