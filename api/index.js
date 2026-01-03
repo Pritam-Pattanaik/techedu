@@ -15,10 +15,22 @@ if (!process.env.DATABASE_URL) {
     console.error('Please set it in your Vercel dashboard: Settings -> Environment Variables');
 }
 
+// Validate and Sanitize DATABASE_URL
+let dbUrl = process.env.DATABASE_URL || 'postgresql://placeholder';
+
+// Remove surrounding quotes if present (common copy-paste error)
+dbUrl = dbUrl.trim();
+if (dbUrl.startsWith('"') && dbUrl.endsWith('"')) {
+    dbUrl = dbUrl.slice(1, -1);
+}
+if (dbUrl.startsWith("'") && dbUrl.endsWith("'")) {
+    dbUrl = dbUrl.slice(1, -1);
+}
+
 const prisma = new PrismaClient({
     datasources: {
         db: {
-            url: process.env.DATABASE_URL || 'postgresql://placeholder',
+            url: dbUrl,
         },
     },
 });
