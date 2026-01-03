@@ -915,19 +915,16 @@ function App() {
 
     const handleAdminLogin = async (email, password) => {
         try {
-            // Basic hardcoded check for email, DB check for password as per requirements
-            if (email !== 'admin@techedu.com') return false;
-
-            const res = await api.post('/login', { password });
+            const res = await api.post('/login', { email, password });
             if (res.success) {
                 setIsAdmin(true);
                 setShowAdminLogin(false);
                 return { success: true };
             }
-            return { success: false, message: res.message || 'Invalid credentials' };
+            return { success: false, message: res.error || 'Invalid credentials' };
         } catch (err) {
             console.error(err);
-            return { success: false, message: 'Server error. Check DB connection.' };
+            return { success: false, message: err.message || 'Server error. Check DB connection.' };
         }
     };
 

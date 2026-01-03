@@ -5,6 +5,13 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import multer from 'multer';
 import fs from 'fs';
+import { sql } from '../lib/db.js';
+import bcrypt from 'bcryptjs';
+
+import dotenv from 'dotenv';
+
+// Load environment variables locally
+dotenv.config();
 
 // Remove dotenv (Vercel injects env vars; local dev should rely on .env file loading via script)
 
@@ -14,6 +21,17 @@ const port = 3000;
 // -- LAZY DB INITIALIZATION --
 let prismaInstance = null;
 
+// Helper to mask secrets in logs
+const maskUrl = (url) => {
+    if (!url) return 'undefined';
+    try {
+        // Use regex to avoid URL parser errors on partial strings
+        return url.replace(/(:[^:@]+@)/, ':****@');
+    } catch {
+        return 'invalid-url-format';
+    }
+};
+
 function getDb() {
     if (prismaInstance) return prismaInstance;
 
@@ -22,8 +40,15 @@ function getDb() {
     // Validate DATABASE_URL
     let dbUrl = process.env.DATABASE_URL;
 
+    // Log the received URL (masked) for debugging
+    console.log(`[LazyDB] Raw DATABASE_URL: ${maskUrl(dbUrl)}`);
+
     if (!dbUrl || typeof dbUrl !== 'string') {
         console.warn('[LazyDB] DATABASE_URL missing or invalid type. Using placeholder.');
+        // Don't use a placeholder that might timeout silently. Fail fast if desired, or use a clearly invalid one.
+        // But for Vercel build steps, we sometimes need a dummy. 
+        // Better strategy: Throw if we are in a context that requires real DB access.
+        // For now, keep fallback but log heavily.
         dbUrl = 'postgresql://user:pass@localhost:5432/db';
     }
 
@@ -46,11 +71,16 @@ function getDb() {
         dbUrl = `postgresql://${dbUrl}`;
     }
 
-    // Final check: If URL became empty or too short, revert to placeholder to pass validation
-    if (dbUrl.length < 10) {
-        console.warn('[LazyDB] DATABASE_URL too short after sanitization. Using placeholder.');
-        dbUrl = 'postgresql://user:pass@localhost:5432/db';
+    // CRITICAL for Vercel: Ensure SSL usage is enforced if remote
+    if (dbUrl.includes('vercel-storage.com') || dbUrl.includes('neon.tech') || dbUrl.includes('supabase.co')) {
+        if (!dbUrl.includes('sslmode=')) {
+            // Append sslmode=require based on existing query params
+            const separator = dbUrl.includes('?') ? '&' : '?';
+            dbUrl = `${dbUrl}${separator}sslmode=require`;
+        }
     }
+
+    console.log(`[LazyDB] Final Sanitized URL: ${maskUrl(dbUrl)}`);
 
     // CRITICAL: Patch the environment variable itself
     // Prisma Engine might validate env("DATABASE_URL") from schema independently of constructor args
@@ -58,13 +88,14 @@ function getDb() {
 
     // Attempt to connect
     try {
-        console.log(`[LazyDB] Connecting with URL length: ${dbUrl.length}`);
         prismaInstance = new PrismaClient({
             datasources: {
                 db: {
                     url: dbUrl,
                 },
             },
+            // Add logging for detailed query info if needed (optional)
+            // log: ['error', 'warn'], 
         });
         return prismaInstance;
     } catch (e) {
@@ -93,10 +124,23 @@ const upload = multer({ storage });
 // API Routes
 
 // Health check (NO DB DEPENDENCY)
-app.get('/api/health', (req, res) => {
+// Health check (Try to verify DB connection)
+app.get('/api/health', async (req, res) => {
+    let dbStatus = 'unknown';
+    try {
+        const db = getDb();
+        // Lightweight check
+        await db.$queryRaw`SELECT 1`;
+        dbStatus = 'connected';
+    } catch (e) {
+        dbStatus = 'disconnected';
+        console.error('[Health] DB Check Failed:', e.message);
+    }
+
     res.json({
         status: 'ok',
-        db_configured: !!process.env.DATABASE_URL,
+        db_status: dbStatus,
+        env_check: !!process.env.DATABASE_URL,
         timestamp: new Date().toISOString()
     });
 });
@@ -104,46 +148,47 @@ app.get('/api/health', (req, res) => {
 // Database connection test endpoint
 app.get('/api/db-test', async (req, res) => {
     try {
-        const db = getDb(); // Lazy Init
-        const tables = await db.$queryRaw`
-            SELECT table_name 
-            FROM information_schema.tables 
-            WHERE table_schema = 'public'
-        `;
-        res.json({ success: true, tables });
+        // Test connection
+        const result = await sql`SELECT NOW()`;
+
+        return res.json({
+            status: 'success',
+            message: 'Neon DB connected!',
+            timestamp: result[0].now
+        });
+
     } catch (error) {
-        console.error('DB Test Failed:', error);
-        res.status(500).json({ error: error.message, details: error.toString() });
+        console.error('DB Test Error:', error);
+        return res.status(500).json({
+            status: 'error',
+            message: error.message,
+            details: error.toString()
+        });
     }
 });
 
 // Get all courses (Exclude syllabusData for performance)
 app.get('/api/courses', async (req, res) => {
     try {
-        const db = getDb();
-        const courses = await db.course.findMany({
-            orderBy: { id: 'asc' },
-            select: {
-                id: true,
-                title: true,
-                description: true,
-                image: true,
-                registrations: true,
-                syllabusName: true
-            }
+        const courses = await sql`
+            SELECT id, title, description, image, registrations, syllabus_name as "syllabusName" 
+            FROM courses
+            ORDER BY id ASC
+        `;
+
+        const coursesWithUrl = courses.map(c => ({
+            ...c,
+            syllabusUrl: c.syllabusName
+                ? `/api/courses/${c.id}/syllabus`
+                : null
+        }));
+        res.json(coursesWithUrl);
+    } catch (err) {
+        console.error('[API] /courses failed:', err);
+        return res.status(500).json({
+            error: 'Failed to fetch courses',
+            details: err.message
         });
-
-
-
-        // Provide clear hint if it's a connection error
-        if (err.message.includes('Can\'t reach database') || err.message.includes('Authentication failed')) {
-            return res.status(500).json({
-                error: 'Database Connection Failed',
-                hint: 'Check Vercel Environment Variables: DATABASE_URL might be missing or invalid.',
-                details: err.message
-            });
-        }
-        res.status(500).json({ error: err.message });
     }
 });
 
@@ -268,28 +313,52 @@ app.post('/api/leads', async (req, res) => {
     }
 });
 
-// Admin Login Check
+// Login Endpoint (Updated for Neon + Users table)
 app.post('/api/login', async (req, res) => {
-    const { password } = req.body;
     try {
-        const db = getDb();
-        let config = await db.config.findUnique({ where: { key: 'admin_password' } });
+        const { email, password } = req.body;
 
-        // Lazy initialization for first-time login
-        if (!config) {
-            config = await db.config.create({
-                data: { key: 'admin_password', value: 'admin123' }
-            });
+        // Validate input
+        if (!email || !password) {
+            return res.status(400).json({ error: 'Email and password required' });
         }
 
-        if (config.value === password) {
-            res.json({ success: true });
-        } else {
-            res.status(401).json({ success: false, message: 'Invalid credentials' });
+        // Query user from Neon DB
+        const users = await sql`
+            SELECT * FROM users 
+            WHERE email = ${email}
+            LIMIT 1
+        `;
+
+        if (users.length === 0) {
+            return res.status(401).json({ error: 'Invalid credentials' });
         }
-    } catch (err) {
-        console.error('Login error:', err);
-        res.status(500).json({ error: err.message, details: 'Login failed' });
+
+        const user = users[0];
+
+        // Verify password
+        const isValid = await bcrypt.compare(password, user.password);
+
+        if (!isValid) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        // Return user data (exclude password)
+        return res.json({
+            success: true,
+            user: {
+                id: user.id,
+                email: user.email,
+                name: user.name
+            }
+        });
+
+    } catch (error) {
+        console.error('Login error:', error);
+        return res.status(500).json({
+            error: 'Server error. Check DB connection.',
+            details: error.message
+        });
     }
 });
 
@@ -338,13 +407,22 @@ app.post('/api/config/assets', upload.single('file'), async (req, res) => {
 app.get('/api/assets/:key', async (req, res) => {
     const { key } = req.params;
     try {
-        const db = getDb();
-        const asset = await db.config.findUnique({ where: { key } });
-        if (!asset || !asset.data) return res.status(404).send('Asset not found');
+        const result = await sql`
+            SELECT data, mime_type as "mimeType" FROM config 
+            WHERE key = ${key}
+            LIMIT 1
+        `;
 
+        if (result.length === 0 || !result[0].data) {
+            return res.status(404).send('Asset not found');
+        }
+
+        const asset = result[0];
         res.setHeader('Content-Type', asset.mimeType || 'application/octet-stream');
         res.send(asset.data);
+
     } catch (err) {
+        console.error('Asset error:', err);
         res.status(500).json({ error: err.message });
     }
 });
