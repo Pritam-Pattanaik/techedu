@@ -20,12 +20,30 @@ function getDb() {
     console.log('[LazyDB] Initializing Prisma Client...');
 
     // Validate DATABASE_URL
-    let dbUrl = process.env.DATABASE_URL || 'postgresql://placeholder';
+    let dbUrl = process.env.DATABASE_URL;
+
+    if (!dbUrl || typeof dbUrl !== 'string') {
+        console.warn('[LazyDB] DATABASE_URL missing or invalid type. Using placeholder.');
+        dbUrl = 'postgresql://user:pass@localhost:5432/db';
+    }
 
     // Sanitize
-    dbUrl = dbUrl.trim().replace(/^["']|["']$/g, '');
+    dbUrl = dbUrl.trim();
+    // Remove surrounding quotes - robust regex for multiple quote types
+    dbUrl = dbUrl.replace(/^["']+|["']+$/g, '');
+
+    // Protocol fixes
     if (dbUrl.startsWith('postgres://')) {
         dbUrl = dbUrl.replace('postgres://', 'postgresql://');
+    }
+    if (dbUrl.startsWith('neondb://')) {
+        dbUrl = dbUrl.replace('neondb://', 'postgresql://');
+    }
+
+    // Final check: If URL became empty or too short, revert to placeholder to pass validation
+    if (dbUrl.length < 10) {
+        console.warn('[LazyDB] DATABASE_URL too short after sanitization. Using placeholder.');
+        dbUrl = 'postgresql://user:pass@localhost:5432/db';
     }
 
     // Attempt to connect

@@ -6,10 +6,10 @@
   "scripts": {
     "dev": "vite",
     "server": "node api/index.js",
-    "build": "node scripts/db-push.js && vite build",
+    "build": "node scripts/prisma-wrap.js db push --accept-data-loss && vite build",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "postinstall": "prisma generate"
+    "postinstall": "node scripts/prisma-wrap.js generate"
   },
   "dependencies": {
     "@prisma/client": "^5.10.2",
