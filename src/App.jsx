@@ -295,10 +295,11 @@ const AdminLogin = ({ onLogin, onBack }) => {
         setError('');
 
         try {
-            // In a real app, verify against auth system or secure DB
-            // Here we simulate checking against a fetched config
-            const success = await onLogin(email, password);
-            if (!success) setError('Invalid credentials');
+            if (result.success) {
+                // success handled by onLogin redirection or state update
+            } else {
+                setError(result.message || 'Invalid credentials');
+            }
         } catch (err) {
             setError('Login failed');
         }
@@ -908,11 +909,12 @@ function App() {
             if (res.success) {
                 setIsAdmin(true);
                 setShowAdminLogin(false);
-                return true;
+                return { success: true };
             }
-            return false;
+            return { success: false, message: res.message || 'Invalid credentials' };
         } catch (err) {
-            return false;
+            console.error(err);
+            return { success: false, message: 'Server error. Check DB connection.' };
         }
     };
 
