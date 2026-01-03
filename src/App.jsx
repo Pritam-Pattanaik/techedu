@@ -830,7 +830,7 @@ function App() {
     const [selectedCourse, setSelectedCourse] = useState(null);
     const [showLeadModal, setShowLeadModal] = useState(false);
     const [activePage, setActivePage] = useState('home');
-    const [courses, setCourses] = useState(INITIAL_COURSES);
+    const [courses, setCourses] = useState([]);
     const [ts] = useState(Date.now());
 
     // Initial load of courses
