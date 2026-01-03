@@ -9,15 +9,31 @@ import fs from 'fs';
 
 dotenv.config();
 
+// Validate DATABASE_URL is present
+if (!process.env.DATABASE_URL) {
+    console.error('CRITICAL: DATABASE_URL environment variable is not set!');
+    console.error('Please set it in your Vercel dashboard: Settings -> Environment Variables');
+}
+
 const prisma = new PrismaClient({
     datasources: {
         db: {
-            url: process.env.DATABASE_URL,
+            url: process.env.DATABASE_URL || 'postgresql://placeholder',
         },
     },
 });
+
 const app = express();
 const port = 3000;
+
+// Global error handler for uncaught errors
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (error) => {
+    console.error('Unhandled Rejection:', error);
+});
 
 // Middleware
 app.use(cors());
@@ -31,12 +47,42 @@ const upload = multer({ storage });
 // Admin password should be seeded manually or checked on login.
 
 // API Routes
+
+// Health check endpoint
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'ok',
         db_configured: !!process.env.DATABASE_URL,
-        timestamp: new Date().toISOString()
+        db_url_length: process.env.DATABASE_URL ? process.env.DATABASE_URL.length : 0,
+        timestamp: new Date().toISOString(),
+        node_env: process.env.NODE_ENV || 'development'
     });
+});
+
+// Database connection test endpoint
+app.get('/api/db-test', async (req, res) => {
+    try {
+        if (!process.env.DATABASE_URL) {
+            return res.status(500).json({
+                error: 'DATABASE_URL not configured',
+                message: 'Please set DATABASE_URL in Vercel environment variables'
+            });
+        }
+
+        // Simple query to test connection
+        await prisma.$queryRaw`SELECT 1`;
+        res.json({
+            success: true,
+            message: 'Database connection successful'
+        });
+    } catch (error) {
+        console.error('Database connection test failed:', error);
+        res.status(500).json({
+            error: 'Database connection failed',
+            message: error.message,
+            details: error.toString()
+        });
+    }
 });
 
 // Get all courses (Exclude syllabusData for performance)
