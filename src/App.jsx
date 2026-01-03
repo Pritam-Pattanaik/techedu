@@ -915,16 +915,17 @@ function App() {
 
     const handleAdminLogin = async (email, password) => {
         try {
+            // Send email AND password to backend
             const res = await api.post('/login', { email, password });
             if (res.success) {
                 setIsAdmin(true);
                 setShowAdminLogin(false);
                 return { success: true };
             }
-            return { success: false, message: res.error || 'Invalid credentials' };
+            return { success: false, message: res.message || 'Invalid credentials' };
         } catch (err) {
             console.error(err);
-            return { success: false, message: err.message || 'Server error. Check DB connection.' };
+            return { success: false, message: 'Server error. Check DB connection.' };
         }
     };
 
