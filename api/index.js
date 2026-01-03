@@ -16,16 +16,20 @@ if (!process.env.DATABASE_URL) {
 }
 
 // Validate and Sanitize DATABASE_URL
+// Validate and Sanitize DATABASE_URL
 let dbUrl = process.env.DATABASE_URL || 'postgresql://placeholder';
 
-// Remove surrounding quotes if present (common copy-paste error)
-dbUrl = dbUrl.trim();
-if (dbUrl.startsWith('"') && dbUrl.endsWith('"')) {
-    dbUrl = dbUrl.slice(1, -1);
+// Remove surrounding quotes and whitespace
+dbUrl = dbUrl.trim().replace(/^["']|["']$/g, '');
+
+// Ensure correct protocol if missing or malformed (e.g. just postgres://)
+if (dbUrl.startsWith('postgres://')) {
+    dbUrl = dbUrl.replace('postgres://', 'postgresql://');
 }
-if (dbUrl.startsWith("'") && dbUrl.endsWith("'")) {
-    dbUrl = dbUrl.slice(1, -1);
-}
+
+// CRITICAL: Patch the environment variable itself
+// This is because Prisma might read process.env.DATABASE_URL directly during engine startup
+process.env.DATABASE_URL = dbUrl;
 
 const prisma = new PrismaClient({
     datasources: {
