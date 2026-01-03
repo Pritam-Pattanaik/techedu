@@ -134,16 +134,24 @@ app.get('/api/courses', async (req, res) => {
         });
 
         // Dynamically construct URL for frontend compatibility
-        const coursesWithUrl = courses.map(c => ({
             ...c,
-            syllabusUrl: c.syllabusName
-                ? `http://localhost:${port}/api/courses/${c.id}/syllabus`
-                : null
+    syllabusUrl: c.syllabusName
+    ? `/api/courses/${c.id}/syllabus` // Relative URL for Vercel compatibility
+    : null
         }));
-        res.json(coursesWithUrl);
+res.json(coursesWithUrl);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+    console.error('[API] /courses failed:', err);
+    // Provide clear hint if it's a connection error
+    if (err.message.includes('Can\'t reach database') || err.message.includes('Authentication failed')) {
+        return res.status(500).json({
+            error: 'Database Connection Failed',
+            hint: 'Check Vercel Environment Variables: DATABASE_URL might be missing or invalid.',
+            details: err.message
+        });
     }
+    res.status(500).json({ error: err.message });
+}
 });
 
 // Download Syllabus
