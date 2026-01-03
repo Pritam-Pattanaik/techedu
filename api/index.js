@@ -324,11 +324,32 @@ app.post('/api/login', async (req, res) => {
         }
 
         // Query user from Neon DB
-        let users = await sql`
-            SELECT * FROM users 
-            WHERE email = ${email}
-            LIMIT 1
-        `;
+        let users;
+        try {
+            users = await sql`
+                SELECT * FROM users 
+                WHERE email = ${email}
+                LIMIT 1
+            `;
+        } catch (queryErr) {
+            // Self-Healing: If table doesn't exist, create it on the fly
+            if (queryErr.message.includes('relation "users" does not exist')) {
+                console.log('[Auth] Table "users" missing. Creating it now...');
+                await sql`
+                    CREATE TABLE IF NOT EXISTS users (
+                        id SERIAL PRIMARY KEY,
+                        email TEXT UNIQUE NOT NULL,
+                        password TEXT NOT NULL,
+                        name TEXT,
+                        role TEXT DEFAULT 'user'
+                    )
+                `;
+                // Retry query (it will be empty, triggering auto-seed below)
+                users = [];
+            } else {
+                throw queryErr;
+            }
+        }
 
         // --- FIRST RUN AUTO-SEED ---
         // If NO users exist in the DB at all, and the user is trying to login with default credentials,

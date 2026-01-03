@@ -915,8 +915,6 @@ function App() {
 
     const handleAdminLogin = async (email, password) => {
         try {
-            // Send email AND password to backend
-            const res = await api.post('/login', { email, password });
             if (res.success) {
                 setIsAdmin(true);
                 setShowAdminLogin(false);
@@ -925,7 +923,8 @@ function App() {
             return { success: false, message: res.message || 'Invalid credentials' };
         } catch (err) {
             console.error(err);
-            return { success: false, message: 'Server error. Check DB connection.' };
+            // Show the actual error message from the backend (err.message comes from api wrapper throw)
+            return { success: false, message: err.message || 'Server error. Check DB connection.' };
         }
     };
 
