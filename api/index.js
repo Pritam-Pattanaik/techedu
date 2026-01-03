@@ -244,14 +244,24 @@ app.post('/api/leads', async (req, res) => {
 app.post('/api/login', async (req, res) => {
     const { password } = req.body;
     try {
-        const config = await prisma.config.findUnique({ where: { key: 'admin_password' } });
-        if (config && config.value === password) {
+        let config = await prisma.config.findUnique({ where: { key: 'admin_password' } });
+
+        // Lazy initialization for first-time login
+        if (!config) {
+            console.log('Initializing admin password for the first time');
+            config = await prisma.config.create({
+                data: { key: 'admin_password', value: 'admin123' }
+            });
+        }
+
+        if (config.value === password) {
             res.json({ success: true });
         } else {
             res.status(401).json({ success: false, message: 'Invalid credentials' });
         }
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Login error:', err);
+        res.status(500).json({ error: err.message, details: 'Login failed' });
     }
 });
 
