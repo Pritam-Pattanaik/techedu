@@ -40,6 +40,13 @@ const initDB = async () => {
 initDB();
 
 // API Routes
+app.get('/api/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        db_configured: !!process.env.DATABASE_URL,
+        timestamp: new Date().toISOString()
+    });
+});
 
 // Get all courses (Exclude syllabusData for performance)
 app.get('/api/courses', async (req, res) => {
