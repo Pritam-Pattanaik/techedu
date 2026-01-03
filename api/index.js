@@ -253,13 +253,8 @@ app.get('/api/assets/:key', async (req, res) => {
 });
 
 // Serve static files in production
-const __dirname = dirname(fileURLToPath(import.meta.url));
-if (process.env.NODE_ENV === 'production') {
-    app.use(express.static(join(__dirname, 'dist')));
-    app.get('*', (req, res) => {
-        res.sendFile(join(__dirname, 'dist', 'index.html'));
-    });
-}
+// Static file serving is handled by Vercel for frontend
+// No need for express.static here in serverless mode
 
 if (process.env.NODE_ENV !== 'production') {
     app.listen(port, () => {
