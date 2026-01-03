@@ -1,50 +1,61 @@
 import { execSync } from 'child_process';
 import process from 'process';
 
-// Get arguments (e.g. "generate" or "db push")
 const args = process.argv.slice(2).join(' ');
 
-console.log(`[PrismaWrap] Starting wrapper for command: prisma ${args}`);
+console.log(`[PrismaWrap] 🛡️  Starting wrapper for: prisma ${args}`);
 
-// 1. Sanitize DATABASE_URL
+// 1. Get and Sanitize DATABASE_URL
 let dbUrl = process.env.DATABASE_URL;
 
 if (!dbUrl || typeof dbUrl !== 'string') {
-    console.warn('[PrismaWrap] WARNING: DATABASE_URL is missing or invalid. Using placeholder to prevent build crash.');
-    // Use a syntactically valid placeholder so "prisma generate" can pass schema validation
+    console.warn('[PrismaWrap] ⚠️  DATABASE_URL missing. Using fallback for build compatibility.');
     dbUrl = 'postgresql://placeholder:password@localhost:5432/mydb';
 } else {
-    // Trim
-    dbUrl = dbUrl.trim();
-    // Remove quotes
-    dbUrl = dbUrl.replace(/^["']+|["']+$/g, '');
-    // Fix protocol
+    // Trim and strip quotes
+    dbUrl = dbUrl.trim().replace(/^["']+|["']+$/g, '');
+
+    // Fix Protocol
     if (dbUrl.startsWith('postgres://')) {
         dbUrl = dbUrl.replace('postgres://', 'postgresql://');
-    }
-    if (dbUrl.startsWith('neondb://')) {
+    } else if (dbUrl.startsWith('neondb://')) {
         dbUrl = dbUrl.replace('neondb://', 'postgresql://');
+    } else if (!dbUrl.includes('://')) {
+        // Assume postgresql if no protocol is present
+        console.log('[PrismaWrap] 🔧 Protocol missing, appending postgresql://');
+        dbUrl = `postgresql://${dbUrl}`;
     }
 }
 
-// 2. Patch Environment
-process.env.DATABASE_URL = dbUrl;
+console.log(`[PrismaWrap] ✅ URL Prepared (Length: ${dbUrl.length})`);
 
-console.log(`[PrismaWrap] Sanitized DATABASE_URL length: ${dbUrl.length}`);
+// 2. Execute with Shell-Level Export
+// We construct a command string that explicitly sets the variable.
+// Note: This assumes a Unix-like environment (Vercel/Linux/Mac). 
+// For Windows local dev, we might strictly need cross-env, but Vercel is the priority here.
+// However, to be safe for both:
+// We will modify process.env AND use the env option again, but we'll print the command for clarity.
 
-// 3. Execute Command
 try {
-    // We use --accept-data-loss for db push to avoid interactive prompts in CI
-    const cmd = `npx prisma ${args}`;
-    console.log(`[PrismaWrap] Executing: ${cmd}`);
+    process.env.DATABASE_URL = dbUrl;
 
+    // On Vercel (Linux), explicit export in command string is safest to beat other env loaders
+    const isWin = process.platform === "win32";
+    const cmd = isWin
+        ? `npx prisma ${args}`
+        : `DATABASE_URL="${dbUrl}" npx prisma ${args}`;
+
+    console.log(`[PrismaWrap] 🚀 Executing: ${cmd}`);
+
+    // We still pass env in options for Windows fallback
     execSync(cmd, {
         stdio: 'inherit',
-        env: process.env
+        env: process.env,
+        shell: true // Important for variable expansion
     });
 
-    console.log('[PrismaWrap] Success.');
+    console.log('[PrismaWrap] 🎉 Success');
 } catch (error) {
-    console.error('[PrismaWrap] Command failed.');
+    console.error('[PrismaWrap] ❌ Command failed');
     process.exit(1);
 }
