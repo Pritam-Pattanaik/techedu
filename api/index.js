@@ -313,7 +313,7 @@ app.post('/api/leads', async (req, res) => {
     }
 });
 
-// Login Endpoint (Updated for Neon + Users table)
+// Login Endpoint (Updated for Neon + Users table + Auto-Seed)
 app.post('/api/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -324,11 +324,29 @@ app.post('/api/login', async (req, res) => {
         }
 
         // Query user from Neon DB
-        const users = await sql`
+        let users = await sql`
             SELECT * FROM users 
             WHERE email = ${email}
             LIMIT 1
         `;
+
+        // --- FIRST RUN AUTO-SEED ---
+        // If NO users exist in the DB at all, and the user is trying to login with default credentials,
+        // we create the admin. This mimics the original behavior of lazy-config-creation.
+        if (users.length === 0) {
+            const allUsersCount = await sql`SELECT count(*) FROM users`;
+            if (parseInt(allUsersCount[0].count) === 0 && email === 'admin@techedu.com' && password === 'admin123') {
+                console.log('[Auth] First run detected. Creating admin user.');
+                const hashedPassword = await bcrypt.hash('admin123', 10);
+                await sql`
+                    INSERT INTO users (email, password, name, role)
+                    VALUES (${email}, ${hashedPassword}, 'Admin User', 'admin')
+                `;
+                // Re-fetch
+                users = await sql`SELECT * FROM users WHERE email = ${email} LIMIT 1`;
+            }
+        }
+        // ---------------------------
 
         if (users.length === 0) {
             return res.status(401).json({ error: 'Invalid credentials' });
