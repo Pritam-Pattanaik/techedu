@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { PrismaClient } from '@prisma/client';
+import prisma from './db.js'; // IMPORTED
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -9,35 +9,7 @@ import fs from 'fs';
 
 dotenv.config();
 
-// Validate DATABASE_URL is present
-if (!process.env.DATABASE_URL) {
-    console.error('CRITICAL: DATABASE_URL environment variable is not set!');
-    console.error('Please set it in your Vercel dashboard: Settings -> Environment Variables');
-}
-
-// Validate and Sanitize DATABASE_URL
-// Validate and Sanitize DATABASE_URL
-let dbUrl = process.env.DATABASE_URL || 'postgresql://placeholder';
-
-// Remove surrounding quotes and whitespace
-dbUrl = dbUrl.trim().replace(/^["']|["']$/g, '');
-
-// Ensure correct protocol if missing or malformed (e.g. just postgres://)
-if (dbUrl.startsWith('postgres://')) {
-    dbUrl = dbUrl.replace('postgres://', 'postgresql://');
-}
-
-// CRITICAL: Patch the environment variable itself
-// This is because Prisma might read process.env.DATABASE_URL directly during engine startup
-process.env.DATABASE_URL = dbUrl;
-
-const prisma = new PrismaClient({
-    datasources: {
-        db: {
-            url: dbUrl,
-        },
-    },
-});
+// Note: DATABASE_URL patching is now handled in ./db.js
 
 const app = express();
 const port = 3000;
@@ -69,41 +41,22 @@ app.get('/api/health', (req, res) => {
     res.json({
         status: 'ok',
         db_configured: !!process.env.DATABASE_URL,
-        db_url_length: process.env.DATABASE_URL ? process.env.DATABASE_URL.length : 0,
-        timestamp: new Date().toISOString(),
-        node_env: process.env.NODE_ENV || 'development'
+        timestamp: new Date().toISOString()
     });
 });
 
-// Database connection test endpoint
+// RESTORED: Database connection test endpoint
 app.get('/api/db-test', async (req, res) => {
     try {
-        if (!process.env.DATABASE_URL) {
-            return res.status(500).json({
-                error: 'DATABASE_URL not configured',
-                message: 'Please set DATABASE_URL in Vercel environment variables'
-            });
-        }
-
-        // Test connection and list tables
         const tables = await prisma.$queryRaw`
             SELECT table_name 
             FROM information_schema.tables 
             WHERE table_schema = 'public'
         `;
-
-        res.json({
-            success: true,
-            message: 'Database connection successful',
-            tables: tables
-        });
+        res.json({ success: true, tables });
     } catch (error) {
-        console.error('Database connection test failed:', error);
-        res.status(500).json({
-            error: 'Database connection failed',
-            message: error.message,
-            details: error.toString()
-        });
+        console.error('DB Test Failed:', error);
+        res.status(500).json({ error: error.message, details: error.toString() });
     }
 });
 
@@ -258,7 +211,6 @@ app.post('/api/login', async (req, res) => {
 
         // Lazy initialization for first-time login
         if (!config) {
-            console.log('Initializing admin password for the first time');
             config = await prisma.config.create({
                 data: { key: 'admin_password', value: 'admin123' }
             });
