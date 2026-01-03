@@ -133,25 +133,18 @@ app.get('/api/courses', async (req, res) => {
             }
         });
 
-        // Dynamically construct URL for frontend compatibility
-            ...c,
-    syllabusUrl: c.syllabusName
-    ? `/api/courses/${c.id}/syllabus` // Relative URL for Vercel compatibility
-    : null
-        }));
-res.json(coursesWithUrl);
-    } catch (err) {
-    console.error('[API] /courses failed:', err);
-    // Provide clear hint if it's a connection error
-    if (err.message.includes('Can\'t reach database') || err.message.includes('Authentication failed')) {
-        return res.status(500).json({
-            error: 'Database Connection Failed',
-            hint: 'Check Vercel Environment Variables: DATABASE_URL might be missing or invalid.',
-            details: err.message
-        });
+
+
+        // Provide clear hint if it's a connection error
+        if (err.message.includes('Can\'t reach database') || err.message.includes('Authentication failed')) {
+            return res.status(500).json({
+                error: 'Database Connection Failed',
+                hint: 'Check Vercel Environment Variables: DATABASE_URL might be missing or invalid.',
+                details: err.message
+            });
+        }
+        res.status(500).json({ error: err.message });
     }
-    res.status(500).json({ error: err.message });
-}
 });
 
 // Download Syllabus
