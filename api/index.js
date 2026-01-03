@@ -46,6 +46,10 @@ function getDb() {
         dbUrl = 'postgresql://user:pass@localhost:5432/db';
     }
 
+    // CRITICAL: Patch the environment variable itself
+    // Prisma Engine might validate env("DATABASE_URL") from schema independently of constructor args
+    process.env.DATABASE_URL = dbUrl;
+
     // Attempt to connect
     try {
         console.log(`[LazyDB] Connecting with URL length: ${dbUrl.length}`);

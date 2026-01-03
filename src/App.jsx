@@ -60,8 +60,7 @@ const api = {
     }
 };
 
-// --- Mock Data for Initial State / Fallback (Removed/Empty as we fetch from DB) ---
-const INITIAL_COURSES = [];
+
 
 // --- Components ---
 
