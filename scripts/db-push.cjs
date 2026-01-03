@@ -1,4 +1,5 @@
 const { execSync } = require('child_process');
+require('dotenv').config();
 
 console.log('Sanitizing DATABASE_URL...');
 
