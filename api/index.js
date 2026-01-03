@@ -81,11 +81,17 @@ app.get('/api/db-test', async (req, res) => {
             });
         }
 
-        // Simple query to test connection
-        await prisma.$queryRaw`SELECT 1`;
+        // Test connection and list tables
+        const tables = await prisma.$queryRaw`
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public'
+        `;
+
         res.json({
             success: true,
-            message: 'Database connection successful'
+            message: 'Database connection successful',
+            tables: tables
         });
     } catch (error) {
         console.error('Database connection test failed:', error);
