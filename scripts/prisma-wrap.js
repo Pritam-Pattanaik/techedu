@@ -13,6 +13,17 @@ if (!dbUrl || typeof dbUrl !== 'string') {
     console.warn('[PrismaWrap] ⚠️  DATABASE_URL missing. Using fallback for build compatibility.');
     dbUrl = 'postgresql://placeholder:password@localhost:5432/mydb';
 } else {
+    // 0. Robust Extraction: Find where the protocol starts
+    // Matches: postgres://, postgresql://, or neondb://
+    const protocolMatch = dbUrl.match(/(postgres|postgresql|neondb):\/\//);
+    if (protocolMatch) {
+        const startIndex = protocolMatch.index;
+        if (startIndex > 0) {
+            console.log('[PrismaWrap] 🔧 Fix: Extracting URL from garbage prefix');
+            dbUrl = dbUrl.substring(startIndex);
+        }
+    }
+
     // Trim and strip quotes
     dbUrl = dbUrl.trim().replace(/^["']+|["']+$/g, '');
 

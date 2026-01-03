@@ -8,7 +8,17 @@ dotenv.config();
 let originalUrl = process.env.DATABASE_URL;
 let dbUrl = originalUrl || 'postgresql://placeholder';
 
-// 1. Trim whitespace
+// 1. Robust Extraction: Find where the protocol starts
+const protocolMatch = dbUrl.match(/(postgres|postgresql|neondb):\/\//);
+if (protocolMatch) {
+    const startIndex = protocolMatch.index;
+    if (startIndex > 0) {
+        console.log('[DB Config] 🔧 Fix: Extracting URL from garbage prefix');
+        dbUrl = dbUrl.substring(startIndex);
+    }
+}
+
+// 2. Trim whitespace
 dbUrl = dbUrl.trim();
 
 // 2. Remove surrounding double quotes
