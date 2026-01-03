@@ -29,8 +29,16 @@ const api = {
         }
         const res = await fetch(`/api${endpoint}`, options);
         if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.error || err.message || 'API Error');
+            // Try to parse JSON, fall back to text if it's an HTML error page (common on Vercel crashes)
+            const text = await res.text();
+            try {
+                const err = JSON.parse(text);
+                throw new Error(err.error || err.message || 'API Error');
+            } catch (jsonErr) {
+                // If text is huge (HTML), truncate it for alert
+                const safeText = text.length > 100 ? text.substring(0, 100) + '...' : text;
+                throw new Error(`Server Error (${res.status}): ${safeText}`);
+            }
         }
         return res.json();
     },
