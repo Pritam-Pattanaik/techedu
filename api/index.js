@@ -40,6 +40,12 @@ function getDb() {
         dbUrl = dbUrl.replace('neondb://', 'postgresql://');
     }
 
+    // Fix: Prepend protocol if missing entirely (e.g. user pasted raw connection string)
+    if (!dbUrl.includes('://')) {
+        console.log('[LazyDB] 🔧 Protocol missing, appending postgresql://');
+        dbUrl = `postgresql://${dbUrl}`;
+    }
+
     // Final check: If URL became empty or too short, revert to placeholder to pass validation
     if (dbUrl.length < 10) {
         console.warn('[LazyDB] DATABASE_URL too short after sanitization. Using placeholder.');
