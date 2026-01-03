@@ -915,6 +915,7 @@ function App() {
 
     const handleAdminLogin = async (email, password) => {
         try {
+            const res = await api.post('/login', { email, password });
             if (res.success) {
                 setIsAdmin(true);
                 setShowAdminLogin(false);
