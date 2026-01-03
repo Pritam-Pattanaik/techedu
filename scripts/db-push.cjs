@@ -1,5 +1,4 @@
-import { execSync } from 'child_process';
-import process from 'process';
+const { execSync } = require('child_process');
 
 console.log('Sanitizing DATABASE_URL...');
 
